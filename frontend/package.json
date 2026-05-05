@@ -58,7 +58,7 @@
   },
   "scripts": {
     "start": "craco start",
-    "build": "CI=false GENERATE_SOURCEMAP=false craco build",
+    "build": "CI=false GENERATE_SOURCEMAP=false NODE_OPTIONS=--max-old-space-size=4096 craco build",
     "test": "craco test"
   },
   "browserslist": {
