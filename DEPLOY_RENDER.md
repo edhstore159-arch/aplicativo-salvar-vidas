@@ -1,192 +1,232 @@
-# 🚀 Deploy do ServiVizinhos no Render — Guia Definitivo
+# 🚀 Deploy ServiVizinhos no Render — Guia Final (testado)
 
-## 🔴 Erro que ocorreu no seu deploy
+## ⚠️ Erros que apareceram nos seus deploys e como evitá-los agora
 
-Pelo log que você enviou:
-```
-grpcio-status 1.76.0 depends on protobuf<7.0.0 and >=6.31.1
-ERROR: ResolutionImpossible
-==> Build failed
-```
-
-**Causa**: o `backend/requirements.txt` estava com **124 dependências** desnecessárias (pandas, numpy, boto3, stripe, google-genai, litellm, black, pytest...) que entram em conflito de versão entre si quando o Render tenta instalar.
-
-**✅ JÁ CORRIGIDO**: o arquivo agora tem apenas as **12 dependências reais** que o backend usa.
+| Erro real visto | Causa | Status |
+|----------------|-------|--------|
+| `ResolutionImpossible: grpcio-status vs protobuf` | requirements.txt tinha 124 deps em conflito | ✅ Corrigido (12 deps essenciais) |
+| Build Command truncado: `yarn install && yarn` | Faltou `build` no final do comando | ⚠️ Atenção no Passo 4 |
+| Login não entra no site no ar | `REACT_APP_BACKEND_URL` errada (CRA embute em build-time) | ⚠️ Atenção no Passo 5 |
+| Múltiplos sites duplicados | Vários blueprints recriados | 🗑️ Apague duplicados antes de começar |
 
 ---
 
-## 📋 Checklist rápido antes de fazer deploy
+## ✅ Passo a passo (15 minutos)
 
-Antes de tudo, garanta que:
-- [x] `backend/requirements.txt` está enxuto (✅ corrigido)
-- [x] `render.yaml` está na raiz do projeto
-- [x] Suas mudanças foram **enviadas para o GitHub** (clique em **"Save to GitHub"** no Emergent)
-- [ ] Você criou um cluster grátis no MongoDB Atlas e tem a `connection string`
+### **🪜 PASSO 1 — Limpar serviços antigos no Render**
 
----
+1. https://dashboard.render.com → entre em cada serviço antigo
+2. **Settings** → role até embaixo → **Delete or suspend** → **Delete**
+3. Apague TODOS os duplicados (`servizinho`, `servicos-de-vizinhos-novo-melhorado-1`, etc)
 
-## 🪜 Passo a passo (5 minutos)
-
-### **1. Criar MongoDB grátis (M0 Free Tier)**
-
-1. Vá para https://cloud.mongodb.com → **Sign in / Try free**
-2. Clique em **"+ Create"** → **M0 (FREE)**
-3. Provider: **AWS** | Region: **São Paulo** ou **Virginia (us-east-1)**
-4. Clique em **"Create Deployment"**
-5. Aparece popup **"Connect to your application"**:
-   - Username: `servivizinhos`
-   - Password: clique em **"Autogenerate Secure Password"** → **anote a senha** (tipo: `aB3xZ7yQ2kP9wM`)
-6. Clique em **"Create Database User"**
-7. Vá no menu lateral → **Network Access** → **+ ADD IP ADDRESS** → **ALLOW ACCESS FROM ANYWHERE** (`0.0.0.0/0`) → **Confirm**
-8. Volte em **Database** → botão **Connect** → **Drivers** → copie a string que aparece:
-   ```
-   mongodb+srv://servivizinhos:<db_password>@cluster0.abcde.mongodb.net/?retryWrites=true&w=majority
-   ```
-9. **Substitua `<db_password>`** pela senha que você anotou. Resultado final:
-   ```
-   mongodb+srv://servivizinhos:aB3xZ7yQ2kP9wM@cluster0.abcde.mongodb.net/?retryWrites=true&w=majority
-   ```
-
-⚠️ **Guarde essa string completa**. Você vai usá-la no Render.
+⚠️ Mantenha apenas se tiver um backend que **já está funcionando** com `MONGO_URL` ok.
 
 ---
 
-### **2. Garantir que o código está no GitHub**
+### **🪜 PASSO 2 — Criar MongoDB grátis (M0)**
 
-No painel do Emergent → clique em **"Save to GitHub"** (ícone do GitHub no chat) → siga os passos para enviar.
+1. https://cloud.mongodb.com → **Sign in / Try free**
+2. **+ Create** → escolha **M0 (FREE)**
+3. Provider: **AWS** | Region: **São Paulo (sa-east-1)** ou **N. Virginia**
+4. **Create Deployment**
+5. Username: `servivizinhos` → **Autogenerate Secure Password** → **anote a senha**
+6. **Create Database User**
+7. Lateral → **Network Access** → **+ ADD IP ADDRESS** → **ALLOW ACCESS FROM ANYWHERE** (`0.0.0.0/0`) → Confirm
+8. Lateral → **Database** → **Connect** → **Drivers** → copie a string
+9. Substitua `<db_password>` pela senha real:
+   ```
+   mongodb+srv://servivizinhos:SUA_SENHA@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
+   ```
 
-Confirme em https://github.com/SEU_USUARIO/SEU_REPO que aparecem os arquivos:
-- `render.yaml` na raiz
-- `backend/requirements.txt` (com apenas ~12 linhas)
+📋 **Guarde essa string completa** — vai usar no Passo 4.
+
+---
+
+### **🪜 PASSO 3 — Subir código atualizado pro GitHub**
+
+No Emergent, clique em **"Save to GitHub"** no chat. Confirme que estes arquivos estão no repo:
+
+- `render.yaml` (na raiz)
+- `backend/requirements.txt` (apenas ~12 linhas)
 - `frontend/package.json`
+- `DEPLOY_RENDER.md` (este guia)
 
 ---
 
-### **3. Criar o Blueprint no Render**
+### **🪜 PASSO 4 — Criar Backend (Web Service Python)**
 
-1. Acesse https://dashboard.render.com → faça login com GitHub
-2. **+ New** (canto superior direito) → **Blueprint**
-3. Conecte sua conta do GitHub se ainda não estiver
-4. Selecione o repositório do ServiVizinhos
-5. Render detecta automaticamente o `render.yaml` e mostra **2 serviços**:
-   - 🐍 `servivizinhos-backend` (Python)
-   - ⚛️ `servivizinhos-frontend` (Static)
-6. Em **Blueprint Name** escreva `servivizinhos` → **Apply**
+1. Render Dashboard → **+ New** → **Web Service**
+2. Conecte o GitHub e selecione o repositório
+3. Configure **EXATAMENTE assim**:
 
----
+| Campo | Valor |
+|-------|-------|
+| **Name** | `servivizinhos-backend` |
+| **Region** | `Oregon` ou `Virginia` |
+| **Branch** | `main` |
+| **Root Directory** | `backend` |
+| **Runtime** | `Python 3` |
+| **Build Command** | `pip install --upgrade pip && pip install -r requirements.txt` |
+| **Start Command** | `uvicorn server:app --host 0.0.0.0 --port $PORT` |
+| **Plan** | `Free` |
 
-### **4. Configurar a variável MONGO_URL no Backend**
+4. Role até **Environment Variables** e adicione **uma por uma**:
 
-Quando o blueprint for aplicado, o Render vai pedir o valor da variável `MONGO_URL` (que é `sync: false` no yaml por segurança).
+| Key | Value |
+|-----|-------|
+| `MONGO_URL` | (cole a string do Passo 2) |
+| `DB_NAME` | `servivizinhos` |
+| `SECRET_KEY` | (qualquer string longa aleatória, ex: `s7Hg3kP9wM2aB6xQ`) |
+| `CORS_ORIGINS` | `*` |
+| `PYTHON_VERSION` | `3.11.0` |
 
-1. Clique no serviço **`servivizinhos-backend`** → menu lateral **Environment**
-2. Encontre a linha `MONGO_URL` → clique em **Edit**
-3. Cole sua connection string completa:
-   ```
-   mongodb+srv://servivizinhos:SUA_SENHA@cluster0.abcde.mongodb.net/?retryWrites=true&w=majority
-   ```
-4. Clique em **Save Changes** — o backend será redeploy automático
+5. Clique em **Create Web Service**
+6. Aguarde ~3 min até aparecer status **Live** (bolinha verde)
 
-⚠️ **As outras variáveis** (`DB_NAME`, `SECRET_KEY`, `CORS_ORIGINS`) já vêm preenchidas pelo `render.yaml`. Não mexa nelas.
-
----
-
-### **5. Aguardar o deploy do Backend (~3 minutos)**
-
-Vá em **Logs** do `servivizinhos-backend` e aguarde aparecer:
-```
-INFO: Application startup complete.
-INFO: Uvicorn running on http://0.0.0.0:10000
-```
-
-Status no topo da página deve mudar de **Building** → **Live** (bolinha verde).
-
-✅ Teste abrindo no navegador:
-```
-https://servivizinhos-backend.onrender.com/api/
-```
-Deve retornar:
+✅ **Teste**: abra `https://servivizinhos-backend.onrender.com/api/`
+Resposta esperada:
 ```json
 {"message":"AlloVoisins Clone API is running","version":"1.0.0"}
 ```
 
----
-
-### **6. Configurar URL do Backend no Frontend**
-
-1. Vá no serviço **`servivizinhos-frontend`** → **Environment**
-2. Confirme que `REACT_APP_BACKEND_URL` está exatamente igual à URL pública do seu backend, ex:
-   ```
-   https://servivizinhos-backend.onrender.com
-   ```
-3. Se a URL for diferente (porque o nome ficou tipo `servivizinhos-backend-abc1`), corrija aqui e clique em **Save Changes** → **Manual Deploy → Deploy latest commit**
+📋 **Anote a URL exata do backend** (o Render pode adicionar sufixo se já existir).
 
 ---
 
-### **7. Testar a aplicação**
+### **🪜 PASSO 5 — Criar Frontend (Static Site)**
 
-Depois que o frontend ficar **Live**, abra:
-```
-https://servivizinhos-frontend.onrender.com
-```
+1. Render Dashboard → **+ New** → **Static Site**
+2. Selecione o mesmo repositório
+3. Configure **EXATAMENTE assim**:
 
-Faça o teste:
-1. ✅ Página inicial carrega
-2. ✅ Clique em **Cadastrar-se** → preencha → **Cadastrar**
-3. ✅ Faça login → deve redirecionar para `/feed`
-4. ✅ Publique um pedido → deve aparecer no feed
+| Campo | Valor |
+|-------|-------|
+| **Name** | `servivizinhos-app` |
+| **Branch** | `main` |
+| **Root Directory** | `frontend` |
+| **Build Command** | `yarn install --frozen-lockfile && yarn build` |
+| **Publish Directory** | `build` |
+
+⚠️ **CUIDADO no Build Command**: ele PRECISA terminar com `&& yarn build`. Se cortar (`yarn install && yarn`) o site fica em branco.
+
+4. Antes de Create Site, role até **Environment Variables** → **Add**:
+
+| Key | Value |
+|-----|-------|
+| `REACT_APP_BACKEND_URL` | (URL do Passo 4, ex: `https://servivizinhos-backend.onrender.com`) |
+| `NODE_VERSION` | `18.17.0` |
+
+⚠️ **NÃO COLOQUE BARRA `/` NO FINAL DA URL**. Errado: `.../onrender.com/`. Certo: `.../onrender.com`.
+
+5. **Create Static Site** → aguarde build (~3 min)
+
+---
+
+### **🪜 PASSO 6 — Configurar Rewrite (CRÍTICO!)**
+
+Sem isso, ao recarregar `/feed` ou `/mensagens` aparece **404**.
+
+1. No serviço frontend → menu lateral **Redirects/Rewrites**
+2. **Add Rule**:
+   - Source: `/*`
+   - Destination: `/index.html`
+   - Action: **Rewrite**
+3. **Save**
+
+Depois clique em **Manual Deploy → Deploy latest commit** para reconstruir.
+
+---
+
+### **🪜 PASSO 7 — Testar tudo**
+
+1. Abra `https://servivizinhos-app.onrender.com`
+2. **F12 → Console** deve aparecer:
+   ```
+   [ServiVizinhos] Backend URL: https://servivizinhos-backend.onrender.com
+   ```
+3. Clique em **Cadastrar-se** → preencha:
+   - Nome, Email, Senha (mínimo 6 caracteres)
+   - Local: ex. "São Paulo, SP"
+4. **Cadastrar** → deve redirecionar para `/feed`
+5. Teste: publicar pedido, mandar mensagem, modal de PIX
 
 ---
 
 ## 🛠️ Troubleshooting
 
-| Erro | Causa | Como resolver |
-|------|-------|---------------|
-| `ResolutionImpossible` no pip | requirements.txt inchado | ✅ **Já corrigido** — só refaça push para GitHub |
-| `Build failed` no frontend | Build Command com `frontend/ $ ` antes do comando | No Render → frontend → Settings → Build Command: deixe **apenas** `yarn install && yarn build` (sem prefixo) |
-| Backend dorme após 15min | Plano Free | Use UptimeRobot pingando `/api/` a cada 5 min, OU upgrade para Starter ($7/mês) |
-| Erro 401 no login | `MONGO_URL` errada | Cheque IP whitelist do Atlas e a senha na connection string |
-| Erro CORS no console | URL do backend errada no frontend | Edite `REACT_APP_BACKEND_URL` e refaça deploy do frontend |
-| Tela branca no frontend | Build não gerou `index.html` | Logs → confirme `yarn build` ok; cheque se `staticPublishPath: build` está no yaml |
-| `Module not found` | `frontend/package.json` faltando dep | Adicione com `yarn add NOME` localmente, faça push |
+### "Build failed" no backend
+Geralmente conflito de dependência. Vá em **Logs** e procure por `ERROR:`.
+- Se ver `ResolutionImpossible` → confirme que `requirements.txt` tem só ~12 linhas (não as 124 antigas)
+- Se ver `Module not found` → algum import quebrado
+
+### Login dá "Network Error" no console
+- O backend está dormindo (cold start). Aguarde 30-50s e tente de novo
+- Ou `REACT_APP_BACKEND_URL` está errada → corrija e **Manual Deploy** o frontend
+
+### Login dá CORS error
+- Backend → Environment → confirme `CORS_ORIGINS=*`
+- Reinicie o backend (`Manual Deploy → Clear build cache & deploy`)
+
+### Tela branca no frontend
+- Build Command está cortado. Vá em frontend → Settings → Build → Edit → corrija para `yarn install --frozen-lockfile && yarn build` → Save → Manual Deploy
+
+### "404 Not Found" ao recarregar /feed
+- Faltou o Rewrite Rule do Passo 6
 
 ---
 
-## 🔧 Configurações que devem estar no Render
+## 💰 Custos
 
-### Backend (`servivizinhos-backend`)
-| Campo | Valor |
-|-------|-------|
-| Runtime | Python |
-| Root Directory | `backend` |
-| Build Command | `pip install -r requirements.txt` |
-| Start Command | `uvicorn server:app --host 0.0.0.0 --port $PORT` |
-| Health Check Path | `/api/` |
+| Serviço | Plano Free | Limite |
+|---------|-----------|--------|
+| Render Backend | Grátis | Dorme após 15min inatividade (50s cold start) |
+| Render Frontend | Grátis | 100 GB bandwidth/mês |
+| MongoDB Atlas | M0 Grátis | 512 MB storage |
+| **TOTAL** | **R$ 0,00** | — |
 
-### Frontend (`servivizinhos-frontend`)
-| Campo | Valor |
-|-------|-------|
-| Runtime | Static Site |
-| Root Directory | `frontend` |
-| Build Command | `yarn install && yarn build` |
-| Publish Directory | `build` |
-
-⚠️ **Atenção na tela de Settings (sua segunda screenshot)**: o campo **"Build Command"** deve conter **somente** `yarn install && yarn build`. Se estiver com `frontend/ $ yarn install && yarn build`, apague o `frontend/ $ ` (é prompt visual, não faz parte do comando).
+Para **eliminar o cold start**: upgrade Render Starter ($7/mês) OU configure **UptimeRobot** (https://uptimerobot.com — grátis) pingando `https://servivizinhos-backend.onrender.com/api/` a cada 5 minutos.
 
 ---
 
-## 💰 Custo total: **R$ 0,00**
+## 📌 Configuração final correta (cheat sheet)
 
-- Render Free × 2 serviços
-- MongoDB Atlas M0 (512 MB)
-- Limite: app dorme após 15 min → 30-50s de cold start na primeira request
+### Backend → Settings
+```
+Root Directory:   backend
+Build Command:    pip install --upgrade pip && pip install -r requirements.txt
+Start Command:    uvicorn server:app --host 0.0.0.0 --port $PORT
+Health Check:     /api/
+```
+
+### Backend → Environment
+```
+MONGO_URL=mongodb+srv://...
+DB_NAME=servivizinhos
+SECRET_KEY=...
+CORS_ORIGINS=*
+PYTHON_VERSION=3.11.0
+```
+
+### Frontend → Settings
+```
+Root Directory:    frontend
+Build Command:     yarn install --frozen-lockfile && yarn build
+Publish Directory: build
+```
+
+### Frontend → Environment
+```
+REACT_APP_BACKEND_URL=https://servivizinhos-backend.onrender.com
+NODE_VERSION=18.17.0
+```
+
+### Frontend → Redirects/Rewrites
+```
+Source:      /*
+Destination: /index.html
+Action:      Rewrite
+```
 
 ---
 
-## ✅ Resumo: o que mudou nesta correção
-
-1. **`backend/requirements.txt`** reduzido de 124 → 12 dependências (sem mais conflito)
-2. **`render.yaml`** com `rootDir`, healthcheck e rewrite SPA configurados
-3. **Este guia** com troubleshoot dos erros que apareceram
-
-**Próximo passo agora**: clique em **"Save to GitHub"** no Emergent → vá no Render → clique em **Manual Deploy → Deploy latest commit** no `servivizinhos-backend`. Em ~3 min ele estará no ar. 🚀
+**Pronto!** Siga os 7 passos na ordem e seu app vai pro ar sem erro. 🎉

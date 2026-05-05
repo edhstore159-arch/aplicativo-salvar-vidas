@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog';
-import { Send, Paperclip, Camera, Star, Phone, Video, Share2, Pin, Archive, Flag, Ban, X, Calendar, CreditCard, MoreHorizontal, Clock, Check, AlertTriangle } from 'lucide-react';
+import { Send, Paperclip, Camera, Star, Phone, Video, Share2, Pin, Archive, Flag, Ban, X, Calendar, CreditCard, MoreHorizontal, Clock, Check, AlertTriangle, Copy } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const mockConversations = [
@@ -57,8 +57,14 @@ const Mensagens = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showDeclineModal, setShowDeclineModal] = useState(false);
   const [showMoreActions, setShowMoreActions] = useState(false);
-  const [scheduleDate, setScheduleDate] = useState('');
-  const [scheduleTime, setScheduleTime] = useState('');
+  const [scheduleData, setScheduleData] = useState({
+    date: '',
+    startTime: '20:15',
+    endTime: '21:45',
+    type: 'video',
+    address: '',
+    notes: ''
+  });
   const [paymentAmount, setPaymentAmount] = useState('');
   const [declineReason, setDeclineReason] = useState('');
   const [actionToast, setActionToast] = useState('');
@@ -162,20 +168,25 @@ const Mensagens = () => {
   };
 
   const handleSchedule = () => {
-    if (!scheduleDate || !scheduleTime) return;
-    addSystemMessage(`Agendamento proposto: ${scheduleDate} às ${scheduleTime}`);
+    if (!scheduleData.date) { showToast('Selecione uma data'); return; }
+    const typeLabel = { video: 'Chamada de vídeo', demanda: 'Endereço da demanda', prestador: `Casa de ${conv?.name}`, outro: 'Outro endereço' }[scheduleData.type] || 'Encontro';
+    addSystemMessage(`Agendamento: ${scheduleData.date} ${scheduleData.startTime}-${scheduleData.endTime} • ${typeLabel}`);
     setShowScheduleModal(false);
-    setScheduleDate('');
-    setScheduleTime('');
+    setScheduleData({ date: '', startTime: '20:15', endTime: '21:45', type: 'video', address: '', notes: '' });
     showToast('Agendamento enviado com sucesso!');
   };
 
   const handlePayment = () => {
-    if (!paymentAmount) return;
-    addSystemMessage(`Solicitação de pagamento: R$ ${paymentAmount}`);
+    if (!paymentAmount) { showToast('Informe o valor'); return; }
+    addSystemMessage(`Solicitação de pagamento via PIX: R$ ${paymentAmount}`);
     setShowPaymentModal(false);
     setPaymentAmount('');
     showToast('Solicitação de pagamento enviada!');
+  };
+
+  const copyPixKey = () => {
+    navigator.clipboard.writeText('3ef11200-bebf-4d88-930c-48e84b11cfc4');
+    showToast('Chave PIX copiada!');
   };
 
   const handleDecline = () => {
@@ -456,42 +467,140 @@ const Mensagens = () => {
         </div>
       </div>
 
-      {/* Schedule Modal */}
+      {/* Schedule Modal - Completo com modalidades */}
       <Dialog open={showScheduleModal} onOpenChange={setShowScheduleModal}>
-        <DialogContent className="max-w-sm">
-          <DialogTitle className="text-lg font-bold">Agendar serviço</DialogTitle>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogTitle className="text-lg font-bold">Propor um agendamento</DialogTitle>
           <div className="space-y-4 mt-2">
-            <div>
-              <label className="text-sm font-medium text-gray-600">Data</label>
-              <Input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} className="mt-1" data-testid="schedule-date" />
+            <div className="bg-blue-50 p-4 rounded-lg text-sm">
+              <p className="font-semibold mb-2">Vantagens do agendamento:</p>
+              <ul className="space-y-1 text-gray-700 text-xs">
+                <li>• Compromisso mútuo</li>
+                <li>• Lembrete por SMS antes do encontro</li>
+                <li>• Lançamento automático de navegação GPS</li>
+                <li>• Lembrete: deixar avaliação após o encontro</li>
+              </ul>
             </div>
+
             <div>
-              <label className="text-sm font-medium text-gray-600">Horário</label>
-              <Input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} className="mt-1" data-testid="schedule-time" />
+              <label className="text-sm font-semibold mb-1 block">Data</label>
+              <Input type="date" value={scheduleData.date}
+                onChange={(e) => setScheduleData({ ...scheduleData, date: e.target.value })}
+                className="h-10" data-testid="schedule-date" />
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Início</label>
+                <Input type="time" value={scheduleData.startTime}
+                  onChange={(e) => setScheduleData({ ...scheduleData, startTime: e.target.value })}
+                  className="h-10" data-testid="schedule-start-time" />
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Fim</label>
+                <Input type="time" value={scheduleData.endTime}
+                  onChange={(e) => setScheduleData({ ...scheduleData, endTime: e.target.value })}
+                  className="h-10" data-testid="schedule-end-time" />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-semibold mb-2 block">Modalidades</label>
+              <div className="space-y-2">
+                {[
+                  { value: 'video', label: 'Chamada de voz ou vídeo' },
+                  { value: 'demanda', label: 'No endereço da demanda' },
+                  { value: 'prestador', label: `Na casa de ${conv?.name || 'prestador'}` },
+                  { value: 'outro', label: 'Outro endereço' },
+                ].map(opt => (
+                  <label key={opt.value} className="flex items-center gap-3 cursor-pointer text-sm">
+                    <input type="radio" name="scheduleType" value={opt.value}
+                      checked={scheduleData.type === opt.value}
+                      onChange={(e) => setScheduleData({ ...scheduleData, type: e.target.value })}
+                      className="w-4 h-4 accent-blue-500" />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-semibold mb-1 block">Notas <span className="text-gray-400 font-normal text-xs">(opcional)</span></label>
+              <textarea value={scheduleData.notes}
+                onChange={(e) => setScheduleData({ ...scheduleData, notes: e.target.value })}
+                placeholder="Ex: itinerário, código do interfone..."
+                className="w-full h-20 text-sm border border-gray-300 rounded-md p-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                maxLength={500} />
+              <p className="text-xs text-gray-500 text-right">{scheduleData.notes.length}/500</p>
+            </div>
+
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setShowScheduleModal(false)} className="flex-1">Cancelar</Button>
-              <Button onClick={handleSchedule} disabled={!scheduleDate || !scheduleTime} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" data-testid="schedule-confirm-btn">
-                <Calendar className="w-4 h-4 mr-2" />Confirmar
+              <Button onClick={handleSchedule} disabled={!scheduleData.date}
+                className="flex-1 bg-gray-900 hover:bg-gray-800 text-white rounded-full" data-testid="schedule-confirm-btn">
+                <Calendar className="w-4 h-4 mr-2" />Propor agendamento
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Payment Modal */}
+      {/* Payment Modal - Pagamento via PIX com QR Code */}
       <Dialog open={showPaymentModal} onOpenChange={setShowPaymentModal}>
-        <DialogContent className="max-w-sm">
-          <DialogTitle className="text-lg font-bold">Solicitar pagamento</DialogTitle>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogTitle className="text-center text-lg font-bold">Pagamento via PIX</DialogTitle>
           <div className="space-y-4 mt-2">
             <div>
-              <label className="text-sm font-medium text-gray-600">Valor (R$)</label>
-              <Input type="number" placeholder="0,00" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="mt-1 text-lg" data-testid="payment-amount" />
+              <label className="text-sm font-semibold mb-1 block">Valor (R$)</label>
+              <Input type="number" placeholder="0,00" value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                className="h-11 text-lg" data-testid="payment-amount" />
             </div>
+
+            <div className="flex justify-center">
+              <div className="bg-white p-3 rounded-lg border-4 border-green-500">
+                <img
+                  src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=00020126580014br.gov.bcb.pix0136jonhsondecarvalho@gmail.com520400005303986540551965.655802BR5925JONHSON%20DE%20SOUSA%20CARV6009SAO%20PAULO62290525ERI51965652CARVALHO63041F20"
+                  alt="QR Code PIX" className="w-52 h-52" />
+              </div>
+            </div>
+
+            <div className="space-y-2 text-sm">
+              <div>
+                <p className="text-gray-600 text-xs font-semibold">Beneficiário:</p>
+                <p className="font-bold">JONHSON DE SOUSA CARVALHO</p>
+              </div>
+              <div>
+                <p className="text-gray-600 text-xs font-semibold">Chave PIX:</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-mono text-xs bg-gray-100 p-2 rounded flex-1 break-all">
+                    3ef11200-bebf-4d88-930c-48e84b11cfc4
+                  </p>
+                  <Button size="sm" variant="outline" onClick={copyPixKey} data-testid="copy-pix-btn">
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <p className="text-gray-600 text-xs font-semibold">Instituição:</p>
+                <p className="font-medium text-sm">NU PAGAMENTOS - IP</p>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded-lg text-xs text-gray-700">
+              <p className="font-semibold mb-1">Como pagar:</p>
+              <ol className="list-decimal list-inside space-y-0.5">
+                <li>Abra o app do seu banco</li>
+                <li>Escaneie o QR Code ou copie a chave PIX</li>
+                <li>Confirme o pagamento</li>
+              </ol>
+            </div>
+
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setShowPaymentModal(false)} className="flex-1">Cancelar</Button>
-              <Button onClick={handlePayment} disabled={!paymentAmount} className="flex-1 bg-green-500 hover:bg-green-600 text-white" data-testid="payment-confirm-btn">
-                <CreditCard className="w-4 h-4 mr-2" />Enviar
+              <Button onClick={handlePayment} disabled={!paymentAmount}
+                className="flex-1 bg-green-500 hover:bg-green-600 text-white" data-testid="payment-confirm-btn">
+                <CreditCard className="w-4 h-4 mr-2" />Confirmar
               </Button>
             </div>
           </div>
