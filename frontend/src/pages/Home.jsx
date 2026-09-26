@@ -187,8 +187,24 @@ const Home = () => {
   const [postText, setPostText] = useState('');
   const [postPhotos, setPostPhotos] = useState([]);
   const [postAddress, setPostAddress] = useState(user?.location || 'São Paulo, SP');
-  const [posts, setPosts] = useState([]);
+  
+  // Initialize posts from cache (localStorage)
+  const [posts, setPosts] = useState(() => {
+    try {
+      const cached = localStorage.getItem('cachedPosts');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        // Cache valid for 5 minutes
+        if (Date.now() - parsed.timestamp < 5 * 60 * 1000) {
+          return parsed.data;
+        }
+      }
+    } catch {}
+    return [];
+  });
+  
   const [loading, setLoading] = useState(true);
+  const [hasFetched, setHasFetched] = useState(false);
   const [showReplyModal, setShowReplyModal] = useState(false);
   const [replyTarget, setReplyTarget] = useState(null);
   const [replyText, setReplyText] = useState('');
@@ -198,7 +214,23 @@ const Home = () => {
   const videoInputRef = useRef(null);
   const [postVideos, setPostVideos] = useState([]);
 
-  const fetchDemands = useCallback(async () => {
+  // Save posts to cache whenever they change
+  useEffect(() => {
+    if (posts.length > 0) {
+      localStorage.setItem('cachedPosts', JSON.stringify({
+        data: posts,
+        timestamp: Date.now()
+      }));
+    }
+  }, [posts]);
+
+  const fetchDemands = useCallback(async (force = false) => {
+    // If we already have posts and not forcing, skip fetch
+    if (!force && posts.length > 0 && hasFetched) {
+      setLoading(false);
+      return;
+    }
+    
     try {
       const response = await api.get('/demands', {
         params: { status: 'active', limit: 50 }
@@ -222,26 +254,29 @@ const Home = () => {
       
       // Also load local posts
       const stored = JSON.parse(localStorage.getItem('userPosts') || '[]');
-      setPosts([...stored, ...apiPosts]);
+      const combinedPosts = [...stored, ...apiPosts];
+      setPosts(combinedPosts);
+      setHasFetched(true);
     } catch (error) {
       console.error('Erro ao buscar demandas:', error);
       // Fallback to localStorage + mock
       const stored = JSON.parse(localStorage.getItem('userPosts') || '[]');
       setPosts([...stored, ...initialPosts]);
+      setHasFetched(true);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [posts.length, hasFetched]);
 
   useEffect(() => {
     fetchDemands();
-    // Re-load when user returns to this tab
-    const onFocus = () => fetchDemands();
+    // Re-load when user returns to this tab (only if cache expired)
+    const onFocus = () => fetchDemands(true);
     window.addEventListener('focus', onFocus);
     window.addEventListener('storage', onFocus);
     
-    // Poll every 30 seconds for new posts
-    const interval = setInterval(fetchDemands, 30000);
+    // Poll every 30 seconds for new posts (only if cache expired)
+    const interval = setInterval(() => fetchDemands(true), 30000);
     
     return () => {
       window.removeEventListener('focus', onFocus);
@@ -413,8 +448,8 @@ const Home = () => {
                 ))}
                 {posts.length === 0 && (
                   <Card className="p-8 text-center">
-                    <p className="text-gray-500">Nenhuma demanda encontrada</p>
-                    <p className="text-sm text-gray-400 mt-2">Seja o primeiro a publicar!</p>
+                    <p className="text-gray-500 animate-pulse">Carregando as propostas de emprego...</p>
+                    <p className="text-sm text-gray-400 mt-2">Aguarde enquanto buscamos as oportunidades</p>
                   </Card>
                 )}
               </div>
