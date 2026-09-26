@@ -4,15 +4,9 @@ from auth_utils import get_current_user
 from typing import List
 from bson import ObjectId
 from datetime import datetime
+from server import db
 
 router = APIRouter()
-
-def get_db():
-    from motor.motor_asyncio import AsyncIOMotorClient
-    import os
-    mongo_url = os.environ['MONGO_URL']
-    client = AsyncIOMotorClient(mongo_url)
-    return client[os.environ['DB_NAME']]
 
 def get_conversation_id(user_id1: str, user_id2: str) -> str:
     """Generate consistent conversation ID from two user IDs"""
@@ -24,7 +18,6 @@ async def get_messages(
     user_id: str = Depends(get_current_user),
     conversation_id: str = Query(None)
 ):
-    db = get_db()
     if conversation_id:
         query = {"conversationId": conversation_id}
     else:
@@ -52,7 +45,6 @@ async def send_message(
     message_data: MessageCreate,
     user_id: str = Depends(get_current_user)
 ):
-    db = get_db()
     conversation_id = get_conversation_id(user_id, message_data.toUserId)
     
     message_dict = {
@@ -84,7 +76,6 @@ async def mark_as_read(
     message_id: str,
     user_id: str = Depends(get_current_user)
 ):
-    db = get_db()
     result = await db.messages.update_one(
         {"_id": ObjectId(message_id), "toUserId": user_id},
         {"$set": {"read": True}}

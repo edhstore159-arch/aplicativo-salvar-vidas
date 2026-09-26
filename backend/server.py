@@ -16,9 +16,23 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+mongo_url = os.environ.get('MONGO_URL')
+if not mongo_url:
+    raise RuntimeError(
+        "MONGO_URL environment variable is not set. "
+        "Please configure it in Render dashboard with your MongoDB Atlas connection string: "
+        "mongodb+srv://username:password@cluster.mongodb.net/servivizinhos?retryWrites=true&w=majority"
+    )
+
+try:
+    client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+    # Test connection
+    client.admin.command('ping')
+    db = client[os.environ.get('DB_NAME', 'servivizinhos')]
+    logging.info("MongoDB connection successful")
+except Exception as e:
+    logging.error(f"MongoDB connection failed: {e}")
+    raise RuntimeError(f"Failed to connect to MongoDB: {e}")
 
 # Create the main app
 app = FastAPI(title="AlloVoisins Clone API")

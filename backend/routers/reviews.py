@@ -4,22 +4,15 @@ from auth_utils import get_current_user
 from typing import List
 from bson import ObjectId
 from datetime import datetime
+from server import db
 
 router = APIRouter()
-
-def get_db():
-    from motor.motor_asyncio import AsyncIOMotorClient
-    import os
-    mongo_url = os.environ['MONGO_URL']
-    client = AsyncIOMotorClient(mongo_url)
-    return client[os.environ['DB_NAME']]
 
 @router.post("/", response_model=ReviewResponse)
 async def create_review(
     review_data: ReviewCreate,
     user_id: str = Depends(get_current_user)
 ):
-    db = get_db()
     # Check if user exists
     to_user = await db.users.find_one({"_id": ObjectId(review_data.toUserId)})
     if not to_user:
@@ -57,7 +50,6 @@ async def create_review(
 
 @router.get("/user/{user_id}", response_model=List[ReviewResponse])
 async def get_user_reviews(user_id: str):
-    db = get_db()
     reviews_cursor = db.reviews.find({"toUserId": user_id}).sort("createdAt", -1)
     reviews = await reviews_cursor.to_list(length=100)
     

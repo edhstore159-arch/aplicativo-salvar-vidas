@@ -4,15 +4,9 @@ from auth_utils import get_current_user
 from typing import List, Optional
 from bson import ObjectId
 from datetime import datetime
+from server import db
 
 router = APIRouter()
-
-def get_db():
-    from motor.motor_asyncio import AsyncIOMotorClient
-    import os
-    mongo_url = os.environ['MONGO_URL']
-    client = AsyncIOMotorClient(mongo_url)
-    return client[os.environ['DB_NAME']]
 
 @router.get("/", response_model=List[DemandResponse])
 async def get_demands(
@@ -20,7 +14,6 @@ async def get_demands(
     status: str = Query("active"),
     limit: int = Query(20, le=100)
 ):
-    db = get_db()
     query = {"status": status}
     if category and category != "all":
         query["category"] = category
@@ -57,7 +50,6 @@ async def create_demand(
     demand_data: DemandCreate,
     user_id: str = Depends(get_current_user)
 ):
-    db = get_db()
     demand_dict = demand_data.dict()
     demand_dict["userId"] = user_id
     demand_dict["likes"] = 0
@@ -87,7 +79,6 @@ async def create_demand(
 
 @router.get("/{demand_id}", response_model=DemandResponse)
 async def get_demand(demand_id: str):
-    db = get_db()
     demand = await db.demands.find_one({"_id": ObjectId(demand_id)})
     if not demand:
         raise HTTPException(status_code=404, detail="Demand not found")
@@ -113,7 +104,6 @@ async def get_demand(demand_id: str):
 
 @router.post("/{demand_id}/like")
 async def like_demand(demand_id: str, user_id: str = Depends(get_current_user)):
-    db = get_db()
     result = await db.demands.update_one(
         {"_id": ObjectId(demand_id)},
         {"$inc": {"likes": 1}}
@@ -124,7 +114,6 @@ async def like_demand(demand_id: str, user_id: str = Depends(get_current_user)):
 
 @router.post("/{demand_id}/recommend")
 async def recommend_demand(demand_id: str, user_id: str = Depends(get_current_user)):
-    db = get_db()
     result = await db.demands.update_one(
         {"_id": ObjectId(demand_id)},
         {"$inc": {"recommends": 1}}
@@ -139,7 +128,6 @@ async def respond_to_demand(
     response_data: DemandResponseCreate,
     user_id: str = Depends(get_current_user)
 ):
-    db = get_db()
     # Check if demand exists
     demand = await db.demands.find_one({"_id": ObjectId(demand_id)})
     if not demand:
@@ -166,7 +154,6 @@ async def respond_to_demand(
 
 @router.delete("/{demand_id}")
 async def delete_demand(demand_id: str, user_id: str = Depends(get_current_user)):
-    db = get_db()
     demand = await db.demands.find_one({"_id": ObjectId(demand_id)})
     if not demand:
         raise HTTPException(status_code=404, detail="Demand not found")

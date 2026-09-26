@@ -6,6 +6,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Camera, MapPin, X, Video, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import api from '../lib/api';
 
 const PublicarDemanda = () => {
   const navigate = useNavigate();
@@ -34,7 +35,7 @@ const PublicarDemanda = () => {
     if (file) setVideos(prev => [...prev, { url: URL.createObjectURL(file), id: Math.random().toString(36) }]);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!description.trim()) { showToast('Adicione uma descrição'); return; }
     const post = {
       id: `pub-${Date.now()}`,
@@ -52,6 +53,20 @@ const PublicarDemanda = () => {
     localStorage.setItem('userPosts', JSON.stringify([post, ...existing]));
     showToast('Pedido publicado com sucesso!');
     setTimeout(() => navigate('/feed'), 1000);
+
+    // Also create on backend
+    try {
+      await api.post('/demands', {
+        title: description.slice(0, 100),
+        description,
+        category: category || 'Outro',
+        location: address || 'Brasil',
+        budget: budget || 'A combinar',
+        photos: photos.map(p => p.url)
+      });
+    } catch (error) {
+      console.error('Erro ao publicar no backend:', error);
+    }
   };
 
   const categories = ['Eletricista', 'Encanador', 'Pintor', 'Mudança', 'Limpeza', 'Montagem de móveis', 'Jardinagem', 'Reparos gerais', 'TI e Tecnologia', 'Aulas particulares', 'Outro'];

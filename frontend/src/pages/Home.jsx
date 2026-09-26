@@ -1,13 +1,14 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Header from '../components/Header';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
-import { Heart, Share2, MessageSquare, MapPin, X, Camera, Globe, ChevronRight, Users, Send, Image as ImageIcon, Video } from 'lucide-react';
+import { Heart, Share2, MessageSquare, MapPin, X, Camera, Globe, ChevronRight, Users, Send, Image as ImageIcon, Video, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import api from '../lib/api';
 
 const initialPosts = [
   {
@@ -81,7 +82,7 @@ const PostCard = ({ post, onRecommend, onRespond }) => {
           <Globe className="w-3.5 h-3.5" />
           <span>Pedido público</span>
         </div>
-        <span className="text-xs text-gray-400">{post.time}</span>
+        <span className="text-xs text-gray-400">{post.postedAt ? new Date(post.postedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : post.time}</span>
       </div>
 
       <div className="flex items-start space-x-3 mb-3">
@@ -186,7 +187,8 @@ const Home = () => {
   const [postText, setPostText] = useState('');
   const [postPhotos, setPostPhotos] = useState([]);
   const [postAddress, setPostAddress] = useState(user?.location || 'São Paulo, SP');
-  const [posts, setPosts] = useState(initialPosts);
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showReplyModal, setShowReplyModal] = useState(false);
   const [replyTarget, setReplyTarget] = useState(null);
   const [replyText, setReplyText] = useState('');
@@ -196,27 +198,57 @@ const Home = () => {
   const videoInputRef = useRef(null);
   const [postVideos, setPostVideos] = useState([]);
 
-  // Load user-published posts from localStorage and merge with mock initial posts
+  const fetchDemands = useCallback(async () => {
+    try {
+      const response = await api.get('/demands', {
+        params: { status: 'active', limit: 50 }
+      });
+      const apiPosts = response.data.map(d => ({
+        id: d.id,
+        userName: `User ${d.userId.slice(0, 6)}`,
+        userAvatar: `https://i.pravatar.cc/150?u=${d.userId}`,
+        time: new Date(d.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        description: d.description,
+        location: d.location,
+        budget: d.budget || 'A combinar',
+        images: d.photos || [],
+        likes: d.likes,
+        recommends: d.recommends,
+        responses: d.responses,
+        isPro: d.isPro,
+        category: d.category,
+        postedAt: d.createdAt
+      }));
+      
+      // Also load local posts
+      const stored = JSON.parse(localStorage.getItem('userPosts') || '[]');
+      setPosts([...stored, ...apiPosts]);
+    } catch (error) {
+      console.error('Erro ao buscar demandas:', error);
+      // Fallback to localStorage + mock
+      const stored = JSON.parse(localStorage.getItem('userPosts') || '[]');
+      setPosts([...stored, ...initialPosts]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    const loadPosts = () => {
-      try {
-        const stored = JSON.parse(localStorage.getItem('userPosts') || '[]');
-        // user posts first (newest), then default mocked posts
-        setPosts([...stored, ...initialPosts]);
-      } catch {
-        setPosts(initialPosts);
-      }
-    };
-    loadPosts();
-    // Re-load when user returns to this tab (e.g., navigating back from /publicar)
-    const onFocus = () => loadPosts();
+    fetchDemands();
+    // Re-load when user returns to this tab
+    const onFocus = () => fetchDemands();
     window.addEventListener('focus', onFocus);
     window.addEventListener('storage', onFocus);
+    
+    // Poll every 30 seconds for new posts
+    const interval = setInterval(fetchDemands, 30000);
+    
     return () => {
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('storage', onFocus);
+      clearInterval(interval);
     };
-  }, []);
+  }, [fetchDemands]);
 
   const handlePhotoUpload = (e, index) => {
     const file = e.target.files[0];
@@ -253,7 +285,7 @@ const Home = () => {
     setPostVideos(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (!postText.trim()) return;
     const newPost = {
       id: `user-${Date.now()}`,
@@ -282,6 +314,22 @@ const Home = () => {
     setPostVideos([]);
     setRecommendedToast('Pedido publicado com sucesso!');
     setTimeout(() => setRecommendedToast(''), 2500);
+
+    // Also create on backend
+    try {
+      await api.post('/demands', {
+        title: postText.slice(0, 100),
+        description: postText,
+        category: 'Outro',
+        location: postAddress,
+        budget: 'A combinar',
+        photos: postPhotos.filter(Boolean)
+      });
+      // Refresh to get the real ID from backend
+      fetchDemands();
+    } catch (error) {
+      console.error('Erro ao publicar no backend:', error);
+    }
   };
 
   const handleRespond = (post) => {
@@ -344,11 +392,33 @@ const Home = () => {
 
           {/* Left Column - Feed */}
           <div className="lg:col-span-2">
-            <div className="space-y-0">
-              {posts.map((post) => (
-                <PostCard key={post.id} post={post} onRecommend={handleRecommend} onRespond={handleRespond} />
-              ))}
-            </div>
+            {loading ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map(i => (
+                  <Card key={i} className="p-4 animate-pulse">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="w-10 h-10 bg-gray-200 rounded-full" />
+                      <div className="h-4 bg-gray-200 rounded w-32" />
+                    </div>
+                    <div className="h-12 bg-gray-200 rounded" />
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mt-2" />
+                    <div className="h-4 bg-gray-200 rounded w-1/2 mt-2" />
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-0">
+                {posts.map((post) => (
+                  <PostCard key={post.id} post={post} onRecommend={handleRecommend} onRespond={handleRespond} />
+                ))}
+                {posts.length === 0 && (
+                  <Card className="p-8 text-center">
+                    <p className="text-gray-500">Nenhuma demanda encontrada</p>
+                    <p className="text-sm text-gray-400 mt-2">Seja o primeiro a publicar!</p>
+                  </Card>
+                )}
+              </div>
+            )}
 
             {/* Themed Categories */}
             <div className="mt-6 mb-4">

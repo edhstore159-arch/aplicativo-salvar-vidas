@@ -3,15 +3,9 @@ from models import UserResponse, UserUpdate
 from auth_utils import get_current_user
 from typing import List, Optional
 from bson import ObjectId
+from server import db
 
 router = APIRouter()
-
-def get_db():
-    from motor.motor_asyncio import AsyncIOMotorClient
-    import os
-    mongo_url = os.environ['MONGO_URL']
-    client = AsyncIOMotorClient(mongo_url)
-    return client[os.environ['DB_NAME']]
 
 @router.get("/", response_model=List[UserResponse])
 async def get_users(
@@ -19,7 +13,6 @@ async def get_users(
     search: Optional[str] = Query(None),
     limit: int = Query(20, le=100)
 ):
-    db = get_db()
     query = {}
     if category and category != "all":
         query["categories"] = category
@@ -48,7 +41,6 @@ async def get_users(
 
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(user_id: str):
-    db = get_db()
     user = await db.users.find_one({"_id": ObjectId(user_id)})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -73,7 +65,6 @@ async def update_user(
     user_update: UserUpdate,
     current_user_id: str = Depends(get_current_user)
 ):
-    db = get_db()
     if user_id != current_user_id:
         raise HTTPException(status_code=403, detail="Not authorized")
     
