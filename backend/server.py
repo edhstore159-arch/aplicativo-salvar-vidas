@@ -9,9 +9,6 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, List
 
-# Import routers
-from routers import auth, users, demands, messages, reviews, categories
-
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -44,6 +41,9 @@ api_router = APIRouter(prefix="/api")
 @api_router.get("/")
 async def root():
     return {"message": "AlloVoisins Clone API is running", "version": "1.0.0"}
+
+# Import routers AFTER db is initialized to avoid circular imports
+from routers import auth, users, demands, messages, reviews, categories
 
 # Include routers
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])

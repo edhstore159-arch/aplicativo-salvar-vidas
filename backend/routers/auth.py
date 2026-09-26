@@ -4,19 +4,12 @@ from auth_utils import get_password_hash, verify_password, create_access_token, 
 from datetime import datetime
 import random
 import string
+from server import db
 
 router = APIRouter()
 
-def get_db():
-    from motor.motor_asyncio import AsyncIOMotorClient
-    import os
-    mongo_url = os.environ['MONGO_URL']
-    client = AsyncIOMotorClient(mongo_url)
-    return client[os.environ['DB_NAME']]
-
 @router.post("/register", response_model=TokenResponse)
 async def register(user_data: UserRegister):
-    db = get_db()
     # Check if user exists
     existing_user = await db.users.find_one({"email": user_data.email})
     if existing_user:
@@ -63,7 +56,6 @@ async def register(user_data: UserRegister):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
-    db = get_db()
     # Find user
     user = await db.users.find_one({"email": credentials.email})
     if not user or not verify_password(credentials.password, user["password"]):
@@ -98,7 +90,6 @@ async def login(credentials: UserLogin):
 @router.get("/me", response_model=UserResponse)
 async def get_me(user_id: str = Depends(get_current_user)):
     from bson import ObjectId
-    db = get_db()
     user = await db.users.find_one({"_id": ObjectId(user_id)})
     if not user:
         raise HTTPException(
@@ -122,7 +113,6 @@ async def get_me(user_id: str = Depends(get_current_user)):
 
 @router.post("/forgot-password")
 async def forgot_password(data: PasswordResetRequest):
-    db = get_db()
     user = await db.users.find_one({"email": data.email})
     if not user:
         raise HTTPException(status_code=404, detail="Email não encontrado")
@@ -137,7 +127,6 @@ async def forgot_password(data: PasswordResetRequest):
 
 @router.post("/reset-password")
 async def reset_password(data: PasswordResetConfirm):
-    db = get_db()
     reset = await db.password_resets.find_one({"email": data.email, "code": data.code})
     if not reset:
         raise HTTPException(status_code=400, detail="Código inválido ou expirado")
