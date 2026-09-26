@@ -22,7 +22,17 @@ if not mongo_url:
     )
 
 try:
-    client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+    client = AsyncIOMotorClient(
+        mongo_url,
+        serverSelectionTimeoutMS=5000,
+        maxPoolSize=20,
+        minPoolSize=5,
+        maxIdleTimeMS=30000,
+        connectTimeoutMS=10000,
+        socketTimeoutMS=20000,
+        retryWrites=True,
+        retryReads=True
+    )
     # Test connection
     client.admin.command('ping')
     db = client[os.environ.get('DB_NAME', 'servivizinhos')]
@@ -41,6 +51,21 @@ api_router = APIRouter(prefix="/api")
 @api_router.get("/")
 async def root():
     return {"message": "AlloVoisins Clone API is running", "version": "1.0.0"}
+
+# Detailed health check for monitoring/keep-alive
+@api_router.get("/health")
+async def health_check():
+    try:
+        await client.admin.command('ping')
+        db_status = "healthy"
+    except Exception as e:
+        db_status = f"unhealthy: {str(e)}"
+    
+    return {
+        "status": "ok" if db_status == "healthy" else "degraded",
+        "database": db_status,
+        "version": "1.0.0"
+    }
 
 # Import routers AFTER db is initialized to avoid circular imports
 from routers import auth, users, demands, messages, reviews, categories
@@ -74,12 +99,18 @@ logger = logging.getLogger(__name__)
 @app.on_event("startup")
 async def startup_event():
     logger.info("Starting AlloVoisins Clone API...")
-    # Create indexes
+    # Create indexes for query performance
     await db.users.create_index("email", unique=True)
+    
+    # Compound indexes for feed queries (status + createdAt for sorting)
+    await db.demands.create_index([("status", 1), ("createdAt", -1)])
+    await db.demands.create_index([("category", 1), ("status", 1)])
     await db.demands.create_index("userId")
-    await db.demands.create_index("category")
+    
     await db.messages.create_index("conversationId")
     await db.reviews.create_index("toUserId")
+    await db.demand_responses.create_index("demandId")
+    
     logger.info("Database indexes created")
 
 @app.on_event("shutdown")

@@ -12,22 +12,48 @@ router = APIRouter()
 async def get_demands(
     category: Optional[str] = Query(None),
     status: str = Query("active"),
-    limit: int = Query(20, le=100)
+    limit: int = Query(20, le=100),
+    skip: int = Query(0, ge=0)
 ):
     query = {"status": status}
     if category and category != "all":
         query["category"] = category
     
-    demands_cursor = db.demands.find(query).sort("createdAt", -1).limit(limit)
+    # Use projection to fetch only needed fields (smaller payload, faster)
+    projection = {
+        "title": 1,
+        "description": 1,
+        "category": 1,
+        "budget": 1,
+        "location": 1,
+        "photos": 1,
+        "likes": 1,
+        "recommends": 1,
+        "isPro": 1,
+        "status": 1,
+        "createdAt": 1,
+        "userId": 1
+    }
+    
+    demands_cursor = db.demands.find(query, projection).sort("createdAt", -1).skip(skip).limit(limit)
     demands = await demands_cursor.to_list(length=limit)
+    
+    # Batch fetch response counts to avoid N+1 queries
+    demand_ids = [str(d["_id"]) for d in demands]
+    response_counts = {}
+    if demand_ids:
+        pipeline = [
+            {"$match": {"demandId": {"$in": demand_ids}}},
+            {"$group": {"_id": "$demandId", "count": {"$sum": 1}}}
+        ]
+        async for doc in db.demand_responses.aggregate(pipeline):
+            response_counts[doc["_id"]] = doc["count"]
     
     result = []
     for demand in demands:
-        # Count responses
-        response_count = await db.demand_responses.count_documents({"demandId": str(demand["_id"])})
-        
+        demand_id = str(demand["_id"])
         result.append(DemandResponse(
-            id=str(demand["_id"]),
+            id=demand_id,
             userId=demand["userId"],
             title=demand["title"],
             description=demand["description"],
@@ -37,7 +63,7 @@ async def get_demands(
             photos=demand.get("photos", []),
             likes=demand.get("likes", 0),
             recommends=demand.get("recommends", 0),
-            responses=response_count,
+            responses=response_counts.get(demand_id, 0),
             isPro=demand.get("isPro", False),
             status=demand.get("status", "active"),
             createdAt=demand["createdAt"]
